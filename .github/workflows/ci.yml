@@ -90,3 +90,34 @@ jobs:
       - name: Stop SmartBus stack
         if: always()
         run: docker compose down
+
+  deploy:
+    name: Deploy to Ubuntu VM
+    needs: build-and-test
+    runs-on: self-hosted
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull latest Docker image
+        run: docker pull ghcr.io/oumayma02/smartbusbackend:devops
+
+      - name: Deploy SmartBus
+        run: |
+          cd ~/projects/smartBusBackend
+          docker compose pull web
+          docker compose up -d
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl --fail http://localhost/api/health
