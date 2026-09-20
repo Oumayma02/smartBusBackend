@@ -108,10 +108,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull latest Docker image
-        run: docker pull ghcr.io/oumayma02/smartbusbackend:devops
+      - name: Pull immutable Docker image
+        run: docker pull ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
 
       - name: Deploy SmartBus
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           cd ~/projects/smartBusBackend
           docker compose pull web
