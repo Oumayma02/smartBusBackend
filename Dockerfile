@@ -1,19 +1,15 @@
-FROM node:latest
-
-RUN mkdir -p /usr/src/app
+FROM node:22-bookworm-slim
 
 WORKDIR /usr/src/app
 
-RUN npm install -g nodemon
+COPY package*.json ./
 
-COPY package*.json /usr/src/app/
+RUN npm ci --omit=dev
 
-RUN npm install
+COPY . .
 
-COPY . /usr/src/app/
 RUN mkdir -p /usr/src/app/uploads
 
+EXPOSE 80
 
-EXPOSE 80 443
-
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

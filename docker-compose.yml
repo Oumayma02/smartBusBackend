@@ -1,25 +1,29 @@
-version: '3.8'
 services:
   mongo:
-    image: mongo
+    image: mongo:8.0
     container_name: mongo
-    restart: always
-    ports:
-      - "27017:27017"
+    restart: unless-stopped
     volumes:
       - mongo_data:/data/db
-      - .:/usr/src/app
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   web:
     build: .
     container_name: web-1
+    restart: unless-stopped
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
     environment:
-      - MONGO_URI=mongodb://mongo:27017/iptsdb
+      MONGO_URI: mongodb://mongo:27017/iptsdb
+      PORT: 80
     ports:
       - "80:80"
-      - "443:443"
 
 volumes:
   mongo_data:

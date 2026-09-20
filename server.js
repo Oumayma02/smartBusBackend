@@ -16,6 +16,21 @@ const createDefaultSuperAdmin = require('./config/defaultAdmin');
 const { swaggerUI, swaggerSpec } = require('./config/swagger');
 
 const app = express();
+app.get('/api/health', async (req, res) => {
+  const dbState = mongoose.connection.readyState;
+
+  if (dbState === 1) {
+    return res.status(200).json({
+      status: 'ok',
+      database: 'connected'
+    });
+  }
+
+  return res.status(503).json({
+    status: 'error',
+    database: 'disconnected'
+  });
+});
 
 // Middleware
 app.use(cookieParser());
@@ -25,7 +40,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Mongoose setup
 mongoose.set("strictQuery", false);
-mongoose.connect("mongodb://mongo:27017/iptsdb", {
+mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
@@ -36,7 +51,7 @@ mongoose.connect("mongodb://mongo:27017/iptsdb", {
   createDefaultSuperAdmin();
 
   // Start server
-  const PORT =  80;
+const PORT = process.env.PORT || 80;
   app.listen(PORT, () => {
     console.log(`🚀 Server started at port ${PORT}`);
   });

@@ -1,0 +1,61 @@
+name: SmartBus CI
+
+on:
+  push:
+    branches:
+      - main
+      - devops
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build and Integration Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Validate Dockerfile
+        run: docker build -t smartbus-backend:${{ github.sha }} .
+
+      - name: Start SmartBus stack
+        run: docker compose up -d
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for SmartBus services..."
+          sleep 15
+          docker compose ps
+
+      - name: Check MongoDB
+        run: |
+          docker compose ps mongo
+          docker compose exec -T mongo mongosh --quiet --eval "db.adminCommand('ping').ok"
+
+      - name: Check SmartBus health endpoint
+        run: |
+          curl --fail --retry 10 --retry-delay 3 \
+            http://localhost/api/health
+
+      - name: Show application logs
+        if: always()
+        run: |
+          docker compose logs web
+          docker compose logs mongo
+
+      - name: Stop SmartBus stack
+        if: always()
+        run: docker compose down
