@@ -34,6 +34,15 @@ jobs:
       - name: Validate Dockerfile
         run: docker build -t smartbus-backend:${{ github.sha }} .
 
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: smartbus-backend:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
       - name: Start SmartBus stack
         run: docker compose up -d
 
