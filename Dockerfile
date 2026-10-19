@@ -1,15 +1,27 @@
-# Stage 1: Install production dependencies
+	# Stage 1: Install production dependencies
 FROM node:22-bookworm-slim AS dependencies
 
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm ci --omit=dev \
-    && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Stage 2: Minimal runtime image
+# Stage 2: Runtime image
 FROM node:22-bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+RUN rm -rf \
+    /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /opt/yarn-v1.22.22 \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg
 
 ENV NODE_ENV=production
 ENV PORT=80
