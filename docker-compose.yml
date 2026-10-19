@@ -1,7 +1,6 @@
 services:
   mongo:
     image: mongo:8.0
-    container_name: mongo
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
@@ -14,7 +13,6 @@ services:
 
   web:
     image: ghcr.io/oumayma02/smartbusbackend:${IMAGE_TAG:-devops}
-    container_name: web-1
     restart: unless-stopped
     depends_on:
       mongo:

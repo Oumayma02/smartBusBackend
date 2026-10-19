@@ -7,3 +7,9 @@ coverage/
 logs/
 *.log
 .DS_Store
+
+# Local MongoDB data
+data/
+
+# Self-hosted GitHub Actions runner and credentials
+actions-runner/

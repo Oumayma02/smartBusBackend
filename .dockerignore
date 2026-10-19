@@ -8,3 +8,7 @@ npm-debug.log
 coverage
 logs
 *.log
+
+# Local database files and runner credentials
+data/
+actions-runner/
