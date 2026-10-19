@@ -58,20 +58,53 @@ jobs:
             smartbus-backend:${{ github.sha }} \
             ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
 
+      - name: Generate temporary MongoDB credentials
+        run: |
+          echo "MONGO_ROOT_USERNAME=ci_admin" >> "$GITHUB_ENV"
+          echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "MONGO_APP_USERNAME=ci_smartbus" >> "$GITHUB_ENV"
+          echo "MONGO_APP_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Start SmartBus integration test stack
         env:
           IMAGE_TAG: ${{ github.sha }}
-        run: docker compose up -d
-
+        run: |
+          docker compose up -d
       - name: Wait for services
         run: |
-          sleep 15
+          for i in $(seq 1 30); do
+            MONGO_ID="$(docker compose ps -q mongo)"
+
+            if [ -n "$MONGO_ID" ] &&
+               [ "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID" 2>/dev/null)" = "healthy" ]; then
+              break
+            fi
+
+            sleep 3
+          done
+
           docker compose ps
 
-      - name: Check MongoDB
+          MONGO_ID="$(docker compose ps -q mongo)"
+          test -n "$MONGO_ID"
+          test "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID")" = "healthy"
+
+      - name: Check MongoDB administrator authentication
         run: |
-          docker compose exec -T mongo \
-            mongosh --quiet --eval "db.adminCommand('ping').ok"
+          docker compose exec -T mongo mongosh --quiet \
+            --username "$MONGO_ROOT_USERNAME" \
+            --password "$MONGO_ROOT_PASSWORD" \
+            --authenticationDatabase admin \
+            --eval "quit(db.adminCommand('ping').ok === 1 ? 0 : 1)"
+
+      - name: Check MongoDB application user
+        run: |
+          docker compose exec -T mongo mongosh --quiet \
+            --username "$MONGO_APP_USERNAME" \
+            --password "$MONGO_APP_PASSWORD" \
+            --authenticationDatabase admin \
+            iptsdb \
+            --eval "quit(db.runCommand({find:'users', limit:1}).ok === 1 ? 0 : 1)"
 
       - name: Check API health
         run: |

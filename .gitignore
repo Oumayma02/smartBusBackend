@@ -13,3 +13,5 @@ data/
 
 # Self-hosted GitHub Actions runner and credentials
 actions-runner/
+.env.mongo
+backups/
