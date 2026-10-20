@@ -1,0 +1,143 @@
+name: SmartBus CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - devops
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build, Scan and Test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Build multi-stage Docker image
+        run: |
+          docker build \
+            -t smartbus-backend:${{ github.sha }} \
+            .
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: smartbus-backend:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Tag image for local integration tests
+        run: |
+          docker tag \
+            smartbus-backend:${{ github.sha }} \
+            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
+
+      - name: Generate temporary MongoDB credentials
+        run: |
+          echo "MONGO_ROOT_USERNAME=ci_admin" >> "$GITHUB_ENV"
+          echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "MONGO_APP_USERNAME=ci_smartbus" >> "$GITHUB_ENV"
+          echo "MONGO_APP_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Start SmartBus integration test stack
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker compose up -d
+      - name: Wait for services
+        run: |
+          for i in $(seq 1 30); do
+            MONGO_ID="$(docker compose ps -q mongo)"
+
+            if [ -n "$MONGO_ID" ] &&
+               [ "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID" 2>/dev/null)" = "healthy" ]; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          docker compose ps
+
+          MONGO_ID="$(docker compose ps -q mongo)"
+          test -n "$MONGO_ID"
+          test "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID")" = "healthy"
+
+      - name: Check MongoDB administrator authentication
+        run: |
+          docker compose exec -T mongo mongosh --quiet \
+            --username "$MONGO_ROOT_USERNAME" \
+            --password "$MONGO_ROOT_PASSWORD" \
+            --authenticationDatabase admin \
+            --eval "quit(db.adminCommand('ping').ok === 1 ? 0 : 1)"
+
+      - name: Check MongoDB application user
+        run: |
+          docker compose exec -T mongo mongosh --quiet \
+            --username "$MONGO_APP_USERNAME" \
+            --password "$MONGO_APP_PASSWORD" \
+            --authenticationDatabase admin \
+            iptsdb \
+            --eval "quit(db.runCommand({find:'users', limit:1}).ok === 1 ? 0 : 1)"
+
+      - name: Check API health
+        run: |
+          curl --fail --retry 10 --retry-delay 3 \
+            http://localhost/api/health
+
+      - name: Show application logs
+        if: always()
+        run: |
+          docker compose logs web
+          docker compose logs mongo
+
+      - name: Stop integration test stack
+        if: always()
+        run: docker compose down
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push immutable image to GHCR
+        if: github.event_name == 'push'
+        run: |
+          docker push \
+            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
+
+      - name: Update devops image tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/devops'
+        run: |
+          IMAGE=ghcr.io/oumayma02/smartbusbackend
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:devops"
+          docker push "$IMAGE:devops"
