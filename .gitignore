@@ -1,0 +1,20 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+*.log
+
+# Local runners and backups
+actions-runner/
+backups/
+
+# Test artifacts
+coverage/
+
+# Operating system files
+.DS_Store

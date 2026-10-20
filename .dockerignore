@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+!.env.sample
+actions-runner
+backups
+tests
+coverage
+.DS_Store
