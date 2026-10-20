@@ -55,46 +55,65 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
+                        if (!(sha ==~ /[a-f0-9]{40}/)) {
+                            error('Invalid Git commit SHA; refusing CI verification.')
+                        }
+
                         def passed = false
 
                         for (int attempt = 0; attempt < 80; attempt++) {
-                            def response = sh(
-                                script: '''
+                            def runStatus = sh(
+                                script: """
                                     set -eu
                                     set +x
-                                    curl --fail --silent --show-error --get \
-                                      -H "Authorization: Bearer $GH_TOKEN" \
-                                      -H "Accept: application/vnd.github+json" \
-                                      --data-urlencode "head_sha=''' + sha + '''" \
-                                      --data-urlencode "per_page=100" \
-                                      "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs"
-                                ''',
+
+                                    response=\$(mktemp)
+                                    trap 'rm -f "\$response"' EXIT
+
+                                    curl --fail --silent --show-error --get \\
+                                      -H "Authorization: Bearer $GH_TOKEN" \\
+                                      -H "Accept: application/vnd.github+json" \\
+                                      --data-urlencode "head_sha=${sha}" \\
+                                      --data-urlencode "per_page=100" \\
+                                      "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs" \\
+                                      -o "\$response"
+
+                                    jq -e --arg sha "${sha}" '
+                                      if (.workflow_runs | type) != "array" then
+                                        error("GitHub Actions API returned an unexpected response")
+                                      else
+                                        [.workflow_runs[]
+                                          | select(
+                                              .head_sha == $sha and
+                                              .event == "push" and
+                                              .head_branch == "main"
+                                            )
+                                        ]
+                                        | sort_by(.run_number // 0)
+                                        | last
+                                        | if . == null then
+                                            "missing"
+                                          elif .status != "completed" then
+                                            "pending"
+                                          elif .conclusion == "success" then
+                                            "success"
+                                          else
+                                            "failure"
+                                          end
+                                      end
+                                    ' "\$response"
+                                """,
                                 returnStdout: true
                             ).trim()
 
-                            def data = new groovy.json.JsonSlurperClassic()
-                                .parseText(response)
-
-                            if (!(data.workflow_runs instanceof List)) {
-                                error('GitHub Actions API returned an unexpected response.')
-                            }
-
-                            def matchingRuns = data.workflow_runs.findAll {
-                                it.head_sha == sha &&
-                                it.event == 'push' &&
-                                it.head_branch == 'main'
-                            }
-
-                            def run = matchingRuns.max { it.run_number ?: 0 }
-
-                            if (run && run.status == 'completed') {
-                                if (run.conclusion != 'success') {
-                                    error("GitHub CI did not succeed for ${sha}.")
-                                }
-
+                            if (runStatus == 'success') {
                                 passed = true
                                 echo "GitHub CI succeeded for ${sha}"
                                 break
+                            }
+
+                            if (runStatus == 'failure') {
+                                error("GitHub CI did not succeed for ${sha}.")
                             }
 
                             echo "Waiting for GitHub CI for ${sha} (attempt ${attempt + 1}/80)"
