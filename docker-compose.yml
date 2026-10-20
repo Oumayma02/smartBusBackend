@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   mongo:
-    image: mongo
+    image: mongo:8.0
     container_name: mongo
     restart: always
     ports:
@@ -11,8 +11,9 @@ services:
       - .:/usr/src/app
 
   web:
-    build: .
-    container_name: web-1
+    image: ghcr.io/oumayma02/smartbusbackend:${IMAGE_TAG:-devops}
+    container_name: smartbusbackend-web-1
+    restart: always
     depends_on:
       - mongo
     environment:

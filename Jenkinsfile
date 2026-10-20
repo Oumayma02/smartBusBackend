@@ -15,8 +15,10 @@ pipeline {
         GH_OWNER = 'Oumayma02'
         GH_REPO = 'smartBusBackend'
         IMAGE = 'ghcr.io/oumayma02/smartbusbackend'
-        PROJECT_DIR = '/workspace/smartbus'
+        JENKINS_PROJECT_DIR = '/workspace/smartbus'
+        HOST_PROJECT_DIR = '/home/oumayma/projects/smartBusBackend'
         COMPOSE_PROJECT = 'smartbusbackend'
+        HEALTH_URL = 'http://172.17.0.1/api/health'
     }
 
     stages {
@@ -25,12 +27,13 @@ pipeline {
                 sh '''
                     set -eu
                     git fetch origin main
+
                     HEAD_SHA=$(git rev-parse HEAD)
                     MAIN_SHA=$(git rev-parse FETCH_HEAD)
 
                     if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
-                      echo "Refusing deployment: checkout is not the current origin/main commit."
-                      exit 1
+                        echo "Refusing deployment: checkout is not the current origin/main commit."
+                        exit 1
                     fi
 
                     echo "Validated main commit: $HEAD_SHA"
@@ -56,7 +59,16 @@ pipeline {
 
                         for (int attempt = 0; attempt < 80; attempt++) {
                             def response = sh(
-                                script: 'set -eu; set +x; curl --fail --silent --show-error --get -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" --data-urlencode "head_sha=' + sha + '" --data-urlencode "per_page=10" "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs"',
+                                script: '''
+                                    set -eu
+                                    set +x
+                                    curl --fail --silent --show-error --get \
+                                      -H "Authorization: Bearer $GH_TOKEN" \
+                                      -H "Accept: application/vnd.github+json" \
+                                      --data-urlencode "head_sha=''' + sha + '''" \
+                                      --data-urlencode "per_page=100" \
+                                      "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs"
+                                ''',
                                 returnStdout: true
                             ).trim()
 
@@ -67,11 +79,13 @@ pipeline {
                                 error('GitHub Actions API returned an unexpected response.')
                             }
 
-                            def run = data.workflow_runs.find {
+                            def matchingRuns = data.workflow_runs.findAll {
                                 it.head_sha == sha &&
                                 it.event == 'push' &&
                                 it.head_branch == 'main'
                             }
+
+                            def run = matchingRuns.max { it.run_number ?: 0 }
 
                             if (run && run.status == 'completed') {
                                 if (run.conclusion != 'success') {
@@ -94,6 +108,7 @@ pipeline {
                 }
             }
         }
+
         stage('Production approval') {
             steps {
                 script {
@@ -103,8 +118,10 @@ pipeline {
                     ).trim()
 
                     timeout(time: 10, unit: 'MINUTES') {
-                        input message: "Deploy validated commit ${sha} to production?",
-                              ok: 'Deploy'
+                        input(
+                            message: "Deploy validated commit ${sha} to production?",
+                            ok: 'Deploy'
+                        )
                     }
                 }
             }
@@ -118,68 +135,24 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    def previousImage = sh(
-                        script: "docker inspect smartbusbackend-web-1 --format='{{.Config.Image}}'",
-                        returnStdout: true
-                    ).trim()
-
-                    def previousTag = previousImage.substring(
-                        previousImage.lastIndexOf(':') + 1
-                    )
-
-                    try {
-                        sh """
-                            set -eu
-                            cd '${PROJECT_DIR}'
-
-                            IMAGE_TAG='${sha}' docker compose \
-                              --project-name '${COMPOSE_PROJECT}' \
-                              --project-directory '${PROJECT_DIR}' \
-                              --env-file '${PROJECT_DIR}/.env.mongo' \
-                              pull web
-
-                            IMAGE_TAG='${sha}' docker compose \
-                              --project-name '${COMPOSE_PROJECT}' \
-                              --project-directory '${PROJECT_DIR}' \
-                              --env-file '${PROJECT_DIR}/.env.mongo' \
-                              up -d --no-deps web
-                        """
-
-                        sh '''
-                            set -eu
-                            for attempt in $(seq 1 15); do
-                              if curl --fail --silent --show-error \
-                                  http://172.17.0.1/api/health; then
-                                echo
-                                exit 0
-                              fi
-                              sleep 4
-                            done
-                            echo "Application health check failed."
-                            exit 1
-                        '''
-
-                        echo "Deployment succeeded for ${sha}"
-                    } catch (err) {
-                        echo "Deployment failed. Attempting rollback to ${previousTag}"
-
-                        sh """
-                            set -eu
-                            IMAGE_TAG='${previousTag}' docker compose \
-                              --project-name '${COMPOSE_PROJECT}' \
-                              --project-directory '${PROJECT_DIR}' \
-                              --env-file '${PROJECT_DIR}/.env.mongo' \
-                              up -d --no-deps web
-                        """
-
-                        sh '''
-                            curl --fail --silent --show-error \
-                              --retry 10 --retry-delay 3 \
-                              http://172.17.0.1/api/health
-                        '''
-
-                        error("Deployment failed; rollback was attempted. Original error: ${err}")
+                    if (!(sha ==~ /[a-f0-9]{40}/)) {
+                        error('Invalid Git commit SHA; refusing deployment.')
                     }
+
+                    echo "Requesting restricted deployment for ${sha}"
+
+                    sh """
+                        set -eu
+                        ssh \
+                          -i /var/jenkins_home/.ssh/smartbus_deploy \
+                          -o BatchMode=yes \
+                          -o IdentitiesOnly=yes \
+                          -o StrictHostKeyChecking=yes \
+                          -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts \
+                          smartbus-deploy@172.17.0.1 "deploy ${sha}"
+                    """
+
+                    echo "Host deployment script completed for ${sha}"
                 }
             }
         }
