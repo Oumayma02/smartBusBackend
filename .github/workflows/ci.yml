@@ -98,8 +98,17 @@ jobs:
 
       - name: Show integration logs
         if: always()
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker compose -f docker-compose.ci.yml logs web mongo
+
+      - name: Clean up integration stack
+        if: always()
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker compose -f docker-compose.ci.yml down -v
+
 
       - name: Clean up integration stack
         if: always()
