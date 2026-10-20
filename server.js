@@ -1,74 +1,37 @@
-const express = require('express');
 const dotenv = require('dotenv');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
-const path = require('path');
 
-// Load environment variables
 dotenv.config({ path: './.env' });
 
-// DB 
-const connectDB = require('./config/db');
+const app = require('./app');
 const createDefaultSuperAdmin = require('./config/defaultAdmin');
 
-// Swagger
-const { swaggerUI, swaggerSpec } = require('./config/swagger');
+mongoose.set('strictQuery', false);
 
-const app = express();
+const startServer = async () => {
+  try {
+    const mongoUri = process.env.MONGO_URI || 'mongodb://mongo:27017/iptsdb';
+    const port = Number(process.env.PORT) || 80;
 
-// Middleware
-app.use(cookieParser());
-app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    await mongoose.connect(mongoUri);
 
-// Mongoose setup
-mongoose.set("strictQuery", false);
-mongoose.connect("mongodb://mongo:27017/iptsdb", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log("✅ Connected to MongoDB");
+    console.log('Connected to MongoDB');
 
-  // Create default super admin only after DB is connected
-  createDefaultSuperAdmin();
+    await createDefaultSuperAdmin();
 
-  // Start server
-  const PORT =  80;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server started at port ${PORT}`);
-  });
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`Server started on port ${port}`);
+    });
 
-})
-.catch((error) => {
-  console.error("❌ MongoDB connection error:", error);
-});
+    server.on('error', (error) => {
+      console.error('HTTP server error:', error);
+      process.exitCode = 1;
+    });
+  } catch (error) {
+    console.error('Application startup failed:', error);
+    await mongoose.disconnect().catch(() => {});
+    process.exitCode = 1;
+  }
+};
 
-// Swagger docs
-app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec));
-
-// Routes
-app.use('/api/session', require('./routes/authRoutes'));
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/agencies', require('./routes/agencyRoutes.js'));
-app.use('/api/routes', require('./routes/routeRoutes'));
-app.use('/api/trips', require('./routes/tripRoutes'));
-app.use('/api/stops', require('./routes/stopRoutes'));
-app.use('/api/stopTimes', require('./routes/stopTimesRoutes'));
-app.use('/api/calendars', require('./routes/calendarRoutes.js'));
-app.use('/api/shapes', require('./routes/shapeRoutes.js'));
-app.use('/api/userpermission', require('./routes/permissionRoutes.js'));
-app.use('/api/vehicle-assignments', require('./routes/VehicleAssignementRoutes.js'));
-app.use('/api/vehicles', require('./routes/vehicleRoutes'));
-app.use('/api/drivers', require('./routes/driverRoutes'));
-app.use('/api/students', require('./routes/studentRoutes'));
-app.use('/api/messages', require('./routes/messageRoutes'));
-
-
-// Serve frontend build
-app.use(express.static(path.join(__dirname, "build")));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "build", "index.html"));
-});
+startServer();

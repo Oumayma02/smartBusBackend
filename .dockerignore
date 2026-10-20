@@ -1,0 +1,21 @@
+.git
+.github
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+!.env.sample
+actions-runner
+backups
+tests
+coverage
+.DS_Store
+
+# Local validation backups
+Dockerfile.backup
+server.js.backup
+
+# CI-only MongoDB initialization
+docker/mongo-init-ci.sh
+docker-compose.ci.yml
