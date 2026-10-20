@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const Shape = require('../models/Shape');
 
 // Create a new shape

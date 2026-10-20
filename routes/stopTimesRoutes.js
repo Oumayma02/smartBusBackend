@@ -1,6 +1,6 @@
 const express = require('express');
 const { createStopTime, getStopTimes, getStopTimeById, updateStopTime, deleteStopTime, getStopTimesByTrip} = require('../controllers/stopTimeController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 

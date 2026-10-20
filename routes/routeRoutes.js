@@ -1,6 +1,6 @@
 const express = require('express');
 const { createRoute, getRoutes, getRouteById, updateRoute, deleteRoute } = require('../controllers/routeController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperOrAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 

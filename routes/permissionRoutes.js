@@ -1,6 +1,6 @@
 const express = require('express');
 const {  assignAgencyToAdmin,unassignAgencyFromAdmin,assignRouteToAgency,unassignRouteFromAgency,assignTripToRoute,unassignTripFromRoute} = require('../controllers/userPermissionController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperAdmin,isSuperOrAdmin } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 

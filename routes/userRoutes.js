@@ -1,6 +1,6 @@
 const express = require('express');
 const { createUser, getUsers, getUserById, updateUser, deleteUser } = require('../controllers/userController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperOrAdmin } = require('../middleware/authMiddleware');
 const router = express.Router();
 // Routes protégées par JWT
 router.post('/', protect,isSuperOrAdmin, createUser);      

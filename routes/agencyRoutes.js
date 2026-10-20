@@ -1,6 +1,6 @@
 const express = require('express');
 const { createAgency, getAgencies, getAgencyById, updateAgency, deleteAgency } = require('../controllers/agencyController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperAdmin,isSuperOrAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 

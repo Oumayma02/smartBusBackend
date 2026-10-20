@@ -1,6 +1,5 @@
 const Trip = require('../models/Trip');
 const Route = require('../models/Route');
-const Vehicle = require('../models/Vehicle');
 const Calendar = require('../models/Calendar');
 
 

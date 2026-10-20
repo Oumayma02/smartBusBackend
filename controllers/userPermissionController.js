@@ -1,4 +1,3 @@
-const express = require('express');
 const User = require('../models/User');
 const Agency = require('../models/Agency');
 const Route = require ('../models/Route');

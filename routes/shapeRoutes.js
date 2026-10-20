@@ -1,6 +1,6 @@
 const express = require('express');
 const { createShape,getShapeById,getShapes ,getShapesSummary, updateShape, deleteShape, getShapeByShapeId } = require('../controllers/shapeController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperOrAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 

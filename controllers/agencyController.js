@@ -131,8 +131,10 @@ const getAgencyById = async (req, res) => {
             req.user.role === 'superadmin'
                 ? await Agency.findById(req.params.id).populate('routes')
                 : await Agency.findOne({
-                      _id: req.params.id,
-                      _id: { $in: req.user.agencies },
+                      $and: [
+                          { _id: req.params.id },
+                          { _id: { $in: req.user.agencies } },
+                      ],
                   }).populate('routes');
 
         if (!agency) {

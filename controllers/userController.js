@@ -1,4 +1,3 @@
-const express = require('express');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Student = require('../models/Student'); // Ajout de Student pour la liaison

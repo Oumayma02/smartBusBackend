@@ -1,4 +1,3 @@
-const express = require('express');
 const Student = require('../models/Student');
 const User = require('../models/User'); // Ajout de User pour la liaison
 

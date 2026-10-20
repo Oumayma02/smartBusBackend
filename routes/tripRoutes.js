@@ -1,6 +1,6 @@
 const express = require('express');
 const { createTrip, getTrips, getTripById, updateTrip, deleteTrip ,getTripsByRoute} = require('../controllers/tripController');
-const { protect,isSuperAdmin,isSuperOrAdmin,isAdmin } = require('../middleware/authMiddleware');
+const { protect,isSuperOrAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 

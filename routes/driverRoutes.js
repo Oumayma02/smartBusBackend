@@ -6,7 +6,7 @@ const {
   updateDriver,
   deleteDriver
 } = require('../controllers/driverController');
-const { protect, isSuperAdmin, isSuperOrAdmin, isAdmin } = require('../middleware/authMiddleware');
+const { protect, isSuperOrAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
