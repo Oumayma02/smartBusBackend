@@ -59,69 +59,71 @@ pipeline {
                             error('Invalid Git commit SHA; refusing CI verification.')
                         }
 
-                        def passed = false
+                        withEnv(["CI_COMMIT_SHA=${sha}"]) {
+                            def passed = false
 
-                        for (int attempt = 0; attempt < 80; attempt++) {
-                            def runStatus = sh(
-                                script: """
-                                    set -eu
-                                    set +x
+                            for (int attempt = 0; attempt < 80; attempt++) {
+                                def runStatus = sh(
+                                    script: '''
+                                        set -eu
+                                        set +x
+                                        response=$(mktemp)
+                                        trap 'rm -f "$response"' EXIT
 
-                                    response=\$(mktemp)
-                                    trap 'rm -f "\$response"' EXIT
+                                        curl --fail --silent --show-error --get \
+                                          -H "Authorization: Bearer $GH_TOKEN" \
+                                          -H "Accept: application/vnd.github+json" \
+                                          --data-urlencode "head_sha=$CI_COMMIT_SHA" \
+                                          --data-urlencode "per_page=100" \
+                                          "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs" \
+                                          -o "$response"
 
-                                    curl --fail --silent --show-error --get \\
-                                      -H "Authorization: Bearer \$GH_TOKEN" \\
-                                      -H "Accept: application/vnd.github+json" \\
-                                      --data-urlencode "head_sha=${sha}" \\
-                                      --data-urlencode "per_page=100" \\
-                                      "https://api.github.com/repos/\$GH_OWNER/\$GH_REPO/actions/workflows/ci.yml/runs" \\
-                                      -o "\$response"
-
-                                    jq -e --arg sha "${sha}" '
-                                      if (.workflow_runs | type) != "array" then
-                                        error("GitHub Actions API returned an unexpected response")
-                                      else
-                                        [.workflow_runs[]
-                                          | select(
-                                              .head_sha == \$sha and
-                                              .event == "push" and
-                                              .head_branch == "main"
-                                            )
-                                        ]
-                                        | sort_by(.run_number // 0)
-                                        | last
-                                        | if . == null then
-                                            "missing"
-                                          elif .status != "completed" then
-                                            "pending"
-                                          elif .conclusion == "success" then
-                                            "success"
+                                        jq -er --arg sha "$CI_COMMIT_SHA" '
+                                          if (.workflow_runs | type) != "array" then
+                                            error("Unexpected GitHub Actions API response")
                                           else
-                                            "failure"
+                                            [.workflow_runs[]
+                                              | select(
+                                                  .head_sha == $sha and
+                                                  .event == "push" and
+                                                  .head_branch == "main"
+                                                )
+                                            ]
+                                            | sort_by(.run_number // 0)
+                                            | last
+                                            | if . == null then
+                                                "missing"
+                                              elif .status != "completed" then
+                                                "pending"
+                                              elif .conclusion == "success" then
+                                                "success"
+                                              else
+                                                "failure"
+                                              end
                                           end
-                                      end
-                                    ' "\$response"
-                                """,
-                                returnStdout: true
-                            ).trim()
+                                        ' "$response"
+                                    ''',
+                                    returnStdout: true
+                                ).trim()
 
-                            if (runStatus == 'success') {
-                                passed = true
-                                echo "GitHub CI succeeded for ${sha}"
-                                break
+                                echo "GitHub CI status for ${sha}: ${runStatus}"
+
+                                if (runStatus == 'success') {
+                                    passed = true
+                                    echo "GitHub CI succeeded for ${sha}"
+                                    break
+                                }
+
+                                if (runStatus == 'failure') {
+                                    error("GitHub CI did not succeed for ${sha}.")
+                                }
+
+                                sleep(time: 15, unit: 'SECONDS')
                             }
 
-                            if (runStatus == 'failure') {
-                                error("GitHub CI did not succeed for ${sha}.")
+                            if (!passed) {
+                                error('Timed out waiting for successful GitHub CI.')
                             }
-
-                            echo "Waiting for GitHub CI for ${sha} (attempt ${attempt + 1}/80)"
-                            sleep(time: 15, unit: 'SECONDS')
-                        }
-
-                        if (!passed) {
-                            error('Timed out waiting for successful GitHub CI.')
                         }
                     }
                 }
