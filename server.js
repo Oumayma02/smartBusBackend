@@ -8,21 +8,30 @@ const createDefaultSuperAdmin = require('./config/defaultAdmin');
 
 mongoose.set('strictQuery', false);
 
-mongoose.connect('mongodb://mongo:27017/iptsdb', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(async () => {
-  console.log('✅ Connected to MongoDB');
+const startServer = async () => {
+  try {
+    const mongoUri = process.env.MONGO_URI || 'mongodb://mongo:27017/iptsdb';
+    const port = Number(process.env.PORT) || 80;
 
-  await createDefaultSuperAdmin();
+    await mongoose.connect(mongoUri);
 
-  const PORT = 80;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server started at port ${PORT}`);
-  });
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  process.exitCode = 1;
-});
+    console.log('Connected to MongoDB');
+
+    await createDefaultSuperAdmin();
+
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`Server started on port ${port}`);
+    });
+
+    server.on('error', (error) => {
+      console.error('HTTP server error:', error);
+      process.exitCode = 1;
+    });
+  } catch (error) {
+    console.error('Application startup failed:', error);
+    await mongoose.disconnect().catch(() => {});
+    process.exitCode = 1;
+  }
+};
+
+startServer();

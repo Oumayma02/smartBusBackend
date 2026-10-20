@@ -1,19 +1,34 @@
-FROM node:latest
+FROM node:22-bookworm-slim AS build
 
-RUN mkdir -p /usr/src/app
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install --global npm@latest
 
 WORKDIR /usr/src/app
 
-RUN npm install -g nodemon
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-COPY package*.json /usr/src/app/
+COPY . .
 
-RUN npm install
+FROM node:22-bookworm-slim AS runtime
 
-COPY . /usr/src/app/
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/node_modules/npm \
+              /usr/local/bin/npm \
+              /usr/local/bin/npx
+
+ENV NODE_ENV=production
+WORKDIR /usr/src/app
+
+COPY --from=build /usr/src/app /usr/src/app
+
 RUN mkdir -p /usr/src/app/uploads
-
 
 EXPOSE 80 443
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

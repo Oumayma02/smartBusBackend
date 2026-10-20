@@ -1,13 +1,11 @@
+
 name: SmartBus CI/CD
 
 on:
   push:
-    branches:
-      - main
-      - devops
+    branches: [main, devops]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -16,7 +14,6 @@ jobs:
   build-and-test:
     name: Build, Scan and Test
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
       packages: write
@@ -37,11 +34,8 @@ jobs:
       - name: Run automated tests
         run: npm test
 
-      - name: Build multi-stage Docker image
-        run: |
-          docker build \
-            -t smartbus-backend:${{ github.sha }} \
-            .
+      - name: Build Docker image
+        run: docker build -t smartbus-backend:${{ github.sha }} .
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
@@ -52,12 +46,6 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
 
-      - name: Tag image for local integration tests
-        run: |
-          docker tag \
-            smartbus-backend:${{ github.sha }} \
-            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
-
       - name: Generate temporary MongoDB credentials
         run: |
           echo "MONGO_ROOT_USERNAME=ci_admin" >> "$GITHUB_ENV"
@@ -65,63 +53,59 @@ jobs:
           echo "MONGO_APP_USERNAME=ci_smartbus" >> "$GITHUB_ENV"
           echo "MONGO_APP_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
-      - name: Start SmartBus integration test stack
+      - name: Start isolated integration stack
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker compose up -d
-      - name: Wait for services
+          docker tag smartbus-backend:${{ github.sha }} \
+            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
+
+          docker compose -f docker-compose.ci.yml up -d
+
+      - name: Verify MongoDB and API health
         run: |
           for i in $(seq 1 30); do
-            MONGO_ID="$(docker compose ps -q mongo)"
-
-            if [ -n "$MONGO_ID" ] &&
-               [ "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID" 2>/dev/null)" = "healthy" ]; then
-              break
+            if docker compose -f docker-compose.ci.yml ps --status running | grep -q web; then
+              if curl --silent --fail http://127.0.0.1:8085/api/health; then
+                echo
+                exit 0
+              fi
             fi
-
             sleep 3
           done
 
-          docker compose ps
+          docker compose -f docker-compose.ci.yml ps
+          exit 1
 
-          MONGO_ID="$(docker compose ps -q mongo)"
-          test -n "$MONGO_ID"
-          test "$(docker inspect --format='{{.State.Health.Status}}' "$MONGO_ID")" = "healthy"
-
-      - name: Check MongoDB administrator authentication
+      - name: Verify MongoDB administrator authentication
         run: |
-          docker compose exec -T mongo mongosh --quiet \
+          docker compose -f docker-compose.ci.yml exec -T mongo \
+            mongosh --quiet \
             --username "$MONGO_ROOT_USERNAME" \
             --password "$MONGO_ROOT_PASSWORD" \
             --authenticationDatabase admin \
             --eval "quit(db.adminCommand('ping').ok === 1 ? 0 : 1)"
 
-      - name: Check MongoDB application user
+      - name: Verify MongoDB application user
         run: |
-          docker compose exec -T mongo mongosh --quiet \
+          docker compose -f docker-compose.ci.yml exec -T mongo \
+            mongosh --quiet \
             --username "$MONGO_APP_USERNAME" \
             --password "$MONGO_APP_PASSWORD" \
-            --authenticationDatabase admin \
+            --authenticationDatabase iptsdb \
             iptsdb \
             --eval "quit(db.runCommand({find:'users', limit:1}).ok === 1 ? 0 : 1)"
 
-      - name: Check API health
-        run: |
-          curl --fail --retry 10 --retry-delay 3 \
-            http://localhost/api/health
-
-      - name: Show application logs
+      - name: Show integration logs
         if: always()
         run: |
-          docker compose logs web
-          docker compose logs mongo
+          docker compose -f docker-compose.ci.yml logs web mongo
 
-      - name: Stop integration test stack
+      - name: Clean up integration stack
         if: always()
-        run: docker compose down
+        run: docker compose -f docker-compose.ci.yml down -v
 
-      - name: Log in to GHCR
+      - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
@@ -129,13 +113,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push immutable image to GHCR
+      - name: Publish immutable image
         if: github.event_name == 'push'
         run: |
-          docker push \
-            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
+          docker push ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
 
-      - name: Update devops image tag
+      - name: Publish devops tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/devops'
         run: |
           IMAGE=ghcr.io/oumayma02/smartbusbackend

@@ -11,3 +11,11 @@ backups
 tests
 coverage
 .DS_Store
+
+# Local validation backups
+Dockerfile.backup
+server.js.backup
+
+# CI-only MongoDB initialization
+docker/mongo-init-ci.sh
+docker-compose.ci.yml
