@@ -71,11 +71,11 @@ pipeline {
                                     trap 'rm -f "\$response"' EXIT
 
                                     curl --fail --silent --show-error --get \\
-                                      -H "Authorization: Bearer $GH_TOKEN" \\
+                                      -H "Authorization: Bearer \$GH_TOKEN" \\
                                       -H "Accept: application/vnd.github+json" \\
                                       --data-urlencode "head_sha=${sha}" \\
                                       --data-urlencode "per_page=100" \\
-                                      "https://api.github.com/repos/$GH_OWNER/$GH_REPO/actions/workflows/ci.yml/runs" \\
+                                      "https://api.github.com/repos/\$GH_OWNER/\$GH_REPO/actions/workflows/ci.yml/runs" \\
                                       -o "\$response"
 
                                     jq -e --arg sha "${sha}" '
@@ -84,7 +84,7 @@ pipeline {
                                       else
                                         [.workflow_runs[]
                                           | select(
-                                              .head_sha == $sha and
+                                              .head_sha == \$sha and
                                               .event == "push" and
                                               .head_branch == "main"
                                             )
