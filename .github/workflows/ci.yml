@@ -3,9 +3,13 @@ name: SmartBus CI/CD
 
 on:
   push:
-    branches: [main, devops]
+    branches:
+      - main
+      - devops
+      - jenkins-cd-clean
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,9 +18,15 @@ jobs:
   build-and-test:
     name: Build, Scan and Test
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
+
+    env:
+      COMPOSE_PROJECT_NAME: smartbus-ci
+      IMAGE_NAME: ghcr.io/oumayma02/smartbusbackend
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       - name: Checkout source code
@@ -35,7 +45,7 @@ jobs:
         run: npm test
 
       - name: Build Docker image
-        run: docker build -t smartbus-backend:${{ github.sha }} .
+        run: docker build -t "smartbus-backend:${IMAGE_TAG}" .
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
@@ -48,38 +58,21 @@ jobs:
 
       - name: Generate temporary MongoDB credentials
         run: |
-          echo "MONGO_ROOT_USERNAME=ci_admin" >> "$GITHUB_ENV"
-          echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-          echo "MONGO_APP_USERNAME=ci_smartbus" >> "$GITHUB_ENV"
-          echo "MONGO_APP_PASSWORD=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          {
+            echo "MONGO_ROOT_USERNAME=ci_admin"
+            echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 32)"
+            echo "MONGO_APP_USERNAME=ci_smartbus"
+            echo "MONGO_APP_PASSWORD=$(openssl rand -hex 32)"
+          } >> "$GITHUB_ENV"
 
       - name: Start isolated integration stack
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker tag smartbus-backend:${{ github.sha }} \
-            ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
-
-          docker compose -f docker-compose.ci.yml up -d
-
-      - name: Verify MongoDB and API health
-        run: |
-          for i in $(seq 1 30); do
-            if docker compose -f docker-compose.ci.yml ps --status running | grep -q web; then
-              if curl --silent --fail http://127.0.0.1:8085/api/health; then
-                echo
-                exit 0
-              fi
-            fi
-            sleep 3
-          done
-
-          docker compose -f docker-compose.ci.yml ps
-          exit 1
+          docker tag "smartbus-backend:${IMAGE_TAG}" "${IMAGE_NAME}:${IMAGE_TAG}"
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml up -d
 
       - name: Verify MongoDB administrator authentication
         run: |
-          docker compose -f docker-compose.ci.yml exec -T mongo \
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml exec -T mongo \
             mongosh --quiet \
             --username "$MONGO_ROOT_USERNAME" \
             --password "$MONGO_ROOT_PASSWORD" \
@@ -88,7 +81,7 @@ jobs:
 
       - name: Verify MongoDB application user
         run: |
-          docker compose -f docker-compose.ci.yml exec -T mongo \
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml exec -T mongo \
             mongosh --quiet \
             --username "$MONGO_APP_USERNAME" \
             --password "$MONGO_APP_PASSWORD" \
@@ -96,23 +89,28 @@ jobs:
             iptsdb \
             --eval "quit(db.runCommand({find:'users', limit:1}).ok === 1 ? 0 : 1)"
 
+      - name: Verify API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl --silent --show-error --fail http://127.0.0.1:8085/api/health; then
+              echo
+              exit 0
+            fi
+            sleep 3
+          done
+
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml ps
+          exit 1
+
       - name: Show integration logs
         if: always()
-        env:
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker compose -f docker-compose.ci.yml logs web mongo
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml logs web mongo
 
       - name: Clean up integration stack
         if: always()
-        env:
-          IMAGE_TAG: ${{ github.sha }}
-        run: docker compose -f docker-compose.ci.yml down -v
-
-
-      - name: Clean up integration stack
-        if: always()
-        run: docker compose -f docker-compose.ci.yml down -v
+        run: |
+          docker compose -p "$COMPOSE_PROJECT_NAME" -f docker-compose.ci.yml down -v
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
@@ -124,12 +122,10 @@ jobs:
 
       - name: Publish immutable image
         if: github.event_name == 'push'
-        run: |
-          docker push ghcr.io/oumayma02/smartbusbackend:${{ github.sha }}
+        run: docker push "${IMAGE_NAME}:${IMAGE_TAG}"
 
       - name: Publish devops tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/devops'
         run: |
-          IMAGE=ghcr.io/oumayma02/smartbusbackend
-          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:devops"
-          docker push "$IMAGE:devops"
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:devops"
+          docker push "${IMAGE_NAME}:devops"
