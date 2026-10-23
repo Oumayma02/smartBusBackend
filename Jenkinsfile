@@ -1,6 +1,14 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(
+            name: 'DEPLOY_TARGET',
+            choices: ['compose', 'kubernetes'],
+            description: 'Choose Docker Compose production or Kubernetes deployment.'
+        )
+    }
+
     options {
         timestamps()
         timeout(time: 35, unit: 'MINUTES')
@@ -130,7 +138,7 @@ pipeline {
             }
         }
 
-        stage('Production approval') {
+        stage('Deployment approval') {
             steps {
                 script {
                     def sha = sh(
@@ -138,17 +146,23 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
+                    def target = params.DEPLOY_TARGET
+
+                    if (!(target in ['compose', 'kubernetes'])) {
+                        error("Unsupported deployment target: ${target}")
+                    }
+
                     timeout(time: 10, unit: 'MINUTES') {
                         input(
-                            message: "Deploy validated commit ${sha} to production?",
-                            ok: 'Deploy'
+                            message: "Deploy validated commit ${sha} to ${target}?",
+                            ok: "Deploy to ${target}"
                         )
                     }
                 }
             }
         }
 
-        stage('Deploy and verify') {
+        stage('Deploy target') {
             steps {
                 script {
                     def sha = sh(
@@ -160,22 +174,47 @@ pipeline {
                         error('Invalid Git commit SHA; refusing deployment.')
                     }
 
-                    echo "Requesting restricted deployment for ${sha}"
+                    def remoteCommand
 
-                    sh """
-                        set -eu
-                        ssh \
-                          -i /var/jenkins_home/.ssh/smartbus_deploy \
-                          -o BatchMode=yes \
-                          -o IdentitiesOnly=yes \
-                          -o StrictHostKeyChecking=yes \
-                          -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts \
-                          smartbus-deploy@172.17.0.1 "deploy ${sha}"
-                    """
+                    if (params.DEPLOY_TARGET == 'compose') {
+                        remoteCommand = "deploy ${sha}"
+                    } else if (params.DEPLOY_TARGET == 'kubernetes') {
+                        remoteCommand = "deploy-k8s ${sha}"
+                    } else {
+                        error("Unsupported deployment target: ${params.DEPLOY_TARGET}")
+                    }
 
-                    echo "Host deployment script completed for ${sha}"
+                    echo "Requesting ${params.DEPLOY_TARGET} deployment for ${sha}"
+
+                    withEnv(["DEPLOY_REMOTE_COMMAND=${remoteCommand}"]) {
+                        sh '''
+                            set -eu
+                            ssh \
+                              -i /var/jenkins_home/.ssh/smartbus_deploy \
+                              -o BatchMode=yes \
+                              -o IdentitiesOnly=yes \
+                              -o StrictHostKeyChecking=yes \
+                              -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts \
+                              smartbus-deploy@172.17.0.1 "$DEPLOY_REMOTE_COMMAND"
+                        '''
+                    }
+
+                    echo "Deployment command completed for ${sha}"
+                    echo "Check the host deployment script output for rollout and health verification."
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo "SmartBus ${params.DEPLOY_TARGET} deployment pipeline completed successfully."
+        }
+        failure {
+            echo "SmartBus pipeline failed. Review the stage logs before retrying."
+        }
+        aborted {
+            echo "SmartBus pipeline was aborted or approval timed out."
         }
     }
 }
