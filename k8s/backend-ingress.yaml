@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: smartbus-backend
+  namespace: smartbus
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - smartbus.local
+      secretName: smartbus-tls
+  rules:
+    - host: smartbus.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: smartbus-backend
+                port:
+                  number: 80
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: smartbus-backend
+                port:
+                  number: 80
