@@ -3,7 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-
+const { register } = require('./metrics');
+const metricsMiddleware = require('./metrics-middleware');
 const { swaggerUI, swaggerSpec } = require('./config/swagger');
 
 const app = express();
@@ -12,6 +13,18 @@ app.use(cookieParser());
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (error) {
+    console.error('Failed to collect metrics:', error);
+    res.status(500).end('Failed to collect metrics');
+  }
+});
+
+app.use(metricsMiddleware);
 
 app.get('/api/health', (req, res) => {
   const databaseConnected = mongoose.connection.readyState === 1;
