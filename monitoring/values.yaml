@@ -1,0 +1,70 @@
+grafana:
+  enabled: true
+
+  grafana.ini:
+    smtp:
+      enabled: true
+      host: smtp.gmail.com:587
+      user: "oumaymabacha07@gmail.com"
+      from_address: "oumaymabacha07@gmail.com"
+      from_name: SmartBus Monitoring
+      startTLS_policy: MandatoryStartTLS
+
+  env:
+    GF_SMTP_PASSWORD:
+      valueFrom:
+        secretKeyRef:
+          name: grafana-smtp
+          key: smtp-password
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    retention: 3d
+    retentionSize: 2GB
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1536Mi
+    storageSpec: {}
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
