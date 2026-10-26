@@ -76,13 +76,28 @@ const session = async (req, res) => {
             return res.status(400).json({ message: 'Password is incorrect! ' });
         }
 
-        const token = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role, myadmin: user.myadmin,  passwordtracking: user.passwordtracking, agencies: user.agencies },
-            'secretkey',
-            {
-                expiresIn: '1d',
-            }
-        );
+        const jwtSecret = process.env.JWT_SECRET;
+
+if (!jwtSecret) {
+    throw new Error('JWT_SECRET is not configured');
+}
+
+const token = jwt.sign(
+    {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        myadmin: user.myadmin,
+        passwordtracking: user.passwordtracking,
+        agencies: user.agencies,
+    },
+    jwtSecret,
+    {
+        algorithm: 'HS256',
+        expiresIn: '1d',
+    }
+);
+
         const expiresIn = JSON.parse(
             Buffer.from(token.split('.')[1], 'base64').toString('ascii')
         ).exp;

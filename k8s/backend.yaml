@@ -23,12 +23,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: smartbus-backend-config
+
           env:
             - name: MONGO_URI
               valueFrom:
                 secretKeyRef:
                   name: smartbus-backend-mongo-uri
                   key: MONGO_URI
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: smartbus-jwt-secret
+                  key: JWT_SECRET
+
           resources:
             requests:
               cpu: 100m

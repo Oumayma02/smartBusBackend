@@ -18,3 +18,11 @@ coverage/
 
 # Operating system files
 .DS_Store
+
+# Local monitoring render may contain encoded Kubernetes credentials
+monitoring/rendered-monitoring.yaml
+
+# Local configuration snapshots and temporary backups
+monitoring/values-before-grafana-persistence.yaml
+*.before-*
+*.pre-*
